@@ -74,9 +74,58 @@ header[data-testid="stHeader"] {{ background: transparent; }}
 div[data-testid="stToolbar"] {{ display: none; }}
 .stDeployButton {{ display: none; }}
 
+/* Kill Streamlit "script running" bottom blur / dim overlay */
+div[data-testid="stStatusWidget"],
+div[data-testid="stDecoration"],
+.stStatusWidget,
+.stApp > header + div [data-testid="stStatusWidget"],
+.stAppDeployButton {{
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+}}
+/* Running-state fades Streamlit applies to main content */
+.stApp [data-testid="stAppViewContainer"],
+.stApp [data-testid="stAppViewContainer"] > .main,
+.stApp [data-testid="stAppViewContainer"] section.main,
+.stApp [data-testid="stAppViewContainer"] .block-container,
+.stApp [data-testid="stVerticalBlock"],
+.stApp [data-testid="stVerticalBlockBorderWrapper"],
+.stApp .main,
+section.main,
+.block-container {{
+  opacity: 1 !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  pointer-events: auto !important;
+}}
+/* Bottom gradient / veil some Streamlit builds paint while running */
+.stApp::before,
+.stApp::after,
+.main::before,
+.main::after,
+[data-testid="stAppViewContainer"]::before,
+[data-testid="stAppViewContainer"]::after {{
+  display: none !important;
+  content: none !important;
+  opacity: 0 !important;
+  background: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}}
+/* Anchor/status bars that dim chrome */
+[data-testid="stBottom"],
+[data-testid="stBottomBlockContainer"],
+.stBottom {{
+  display: none !important;
+}}
+
 .stApp {{
   background: var(--nv-canvas);
   color: var(--nv-body);
+  opacity: 1 !important;
+  filter: none !important;
 }}
 
 .block-container {{
@@ -628,6 +677,42 @@ def check_health(api_base: str) -> Optional[dict]:
 
 def inject_styles() -> None:
     st.markdown(NVIDIA_CSS, unsafe_allow_html=True)
+    # Extra client-side guard: Streamlit re-applies running-state styles mid-stream.
+    st.markdown(
+        """
+<script>
+(function () {
+  const clearDim = () => {
+    const sel = [
+      '[data-testid="stStatusWidget"]',
+      '[data-testid="stBottom"]',
+      '[data-testid="stBottomBlockContainer"]',
+      '.stStatusWidget',
+      '.stBottom'
+    ];
+    sel.forEach((s) => {
+      document.querySelectorAll(s).forEach((el) => {
+        el.style.setProperty('display', 'none', 'important');
+        el.style.setProperty('opacity', '0', 'important');
+        el.style.setProperty('visibility', 'hidden', 'important');
+      });
+    });
+    document.querySelectorAll('.stApp, .main, .block-container, [data-testid="stAppViewContainer"], [data-testid="stVerticalBlock"]').forEach((el) => {
+      el.style.setProperty('opacity', '1', 'important');
+      el.style.setProperty('filter', 'none', 'important');
+      el.style.setProperty('-webkit-filter', 'none', 'important');
+      el.style.setProperty('pointer-events', 'auto', 'important');
+    });
+  };
+  clearDim();
+  const obs = new MutationObserver(clearDim);
+  obs.observe(document.documentElement, { attributes: true, childList: true, subtree: true });
+  setInterval(clearDim, 250);
+})();
+</script>
+""",
+        unsafe_allow_html=True,
+    )
 
 
 def render_chrome(health: Optional[dict]) -> None:
@@ -991,48 +1076,83 @@ Accent <span style="color:{C_PRIMARY};font-weight:700;">#76b900</span>
     text = (source or "").strip()
     translate_key = f"{direction}||{text}||{max_new_tokens}"
 
-    should_run = False
-    if not text:
-        st.session_state.last_translated_key = None
-        st.session_state.output_text = ""
-        st.session_state.output_direction = None
-        status.empty()
-        stream_area.markdown(
-            output_html("Translation appears here as you type…", empty=True),
-            unsafe_allow_html=True,
-        )
-    elif len(text) < MIN_CHARS and not force:
-        status.empty()
-    elif force:
-        should_run = True
-    elif live_enabled and translate_key != st.session_state.last_translated_key:
-        # live_textarea already debounced keystrokes before this rerun fired.
-        should_run = True
+    # Store control values so a fragment can stream without re-rendering chrome.
+    st.session_state["_api_base"] = api_base
+    st.session_state["_max_new_tokens"] = max_new_tokens
+    st.session_state["_live_enabled"] = live_enabled
+    st.session_state["_direction"] = direction
+    st.session_state["_force_translate"] = bool(force)
+    st.session_state["_source_text_live"] = text
+    st.session_state["_translate_key"] = translate_key
 
-    if should_run and text:
+    @st.fragment
+    def translation_stream_fragment() -> None:
+        """Stream tokens here so the rest of the page is not marked 'running'."""
+        src = (st.session_state.get("_source_text_live") or "").strip()
+        key = st.session_state.get("_translate_key") or ""
+        force_run = bool(st.session_state.get("_force_translate"))
+        live = bool(st.session_state.get("_live_enabled", True))
+        dirn = st.session_state.get("_direction") or "auto"
+        api = st.session_state.get("_api_base") or DEFAULT_API_BASE
+        max_tok = int(st.session_state.get("_max_new_tokens") or 1000)
+
+        if not src:
+            st.session_state.last_translated_key = None
+            st.session_state.output_text = ""
+            st.session_state.output_direction = None
+            status.empty()
+            stream_area.markdown(
+                output_html("Translation appears here as you type…", empty=True),
+                unsafe_allow_html=True,
+            )
+            return
+
+        if len(src) < MIN_CHARS and not force_run:
+            status.empty()
+            return
+
+        should_run = force_run or (
+            live and key != st.session_state.last_translated_key
+        )
+        if not should_run:
+            if st.session_state.output_text:
+                status.markdown(
+                    status_html(
+                        "ok",
+                        f"Live · direction {st.session_state.output_direction or dirn}",
+                    ),
+                    unsafe_allow_html=True,
+                )
+            return
+
         if (
-            not force
-            and translate_key == st.session_state.last_translated_key
+            not force_run
+            and key == st.session_state.last_translated_key
             and not st.session_state.output_error
         ):
             status.markdown(
                 status_html(
                     "ok",
-                    f"Live · direction {st.session_state.output_direction or direction}",
+                    f"Live · direction {st.session_state.output_direction or dirn}",
                 ),
                 unsafe_allow_html=True,
             )
-        else:
-            run_live_stream(
-                api_base=api_base,
-                text=text,
-                direction=direction,
-                max_new_tokens=max_new_tokens,
-                status_slot=status,
-                output_slot=stream_area,
-            )
-            if not st.session_state.output_error:
-                st.session_state.last_translated_key = translate_key
+            return
+
+        run_live_stream(
+            api_base=api,
+            text=src,
+            direction=dirn,
+            max_new_tokens=max_tok,
+            status_slot=status,
+            output_slot=stream_area,
+        )
+        if not st.session_state.output_error:
+            st.session_state.last_translated_key = key
+        # clear one-shot force flag after handling
+        st.session_state["_force_translate"] = False
+
+    translation_stream_fragment()
 
     render_footer()
 
