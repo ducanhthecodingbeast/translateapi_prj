@@ -122,7 +122,7 @@ Open http://127.0.0.1:18501 — paste text, choose Auto / VI→EN / EN→VI, cli
 
 - `text`: required, non-empty after strip, max **2000** chars  
 - `direction`: `vi-en` | `en-vi` | `auto`  
-- `max_new_tokens`: optional, default 256, max 512  
+- `max_new_tokens`: optional, default 1000, max 1000  
 
 **SSE events:** `meta` → `token`* → `done` (or `error`)
 

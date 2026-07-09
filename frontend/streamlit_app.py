@@ -14,7 +14,8 @@ from typing import Generator, Optional
 
 import httpx
 import streamlit as st
-from st_keyup import st_keyup
+
+from live_textarea_component import live_textarea
 
 DEFAULT_API_BASE = os.environ.get("ENVIT5_API_BASE", "http://127.0.0.1:18800")
 # Pause after last keystroke before starting a new SSE translate.
@@ -81,7 +82,58 @@ div[data-testid="stToolbar"] {{ display: none; }}
 .block-container {{
   padding-top: 0 !important;
   padding-bottom: 0 !important;
-  max-width: 960px !important;
+  max-width: 1180px !important;
+}}
+
+/* Side-by-side input / output panels — matched heights */
+.nv-io-panel {{
+  background: var(--nv-canvas);
+  border: 1px solid var(--nv-hairline);
+  border-radius: var(--nv-radius);
+  padding: 20px 20px 12px 20px;
+  position: relative;
+  min-height: 120px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}}
+.nv-io-panel::before {{
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  background: var(--nv-primary);
+}}
+.nv-io-panel .nv-card-title {{
+  margin-top: 4px;
+}}
+.nv-direction-bar {{
+  background: var(--nv-canvas);
+  border: 1px solid var(--nv-hairline);
+  border-radius: var(--nv-radius);
+  padding: 16px 20px;
+  position: relative;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}}
+.nv-direction-bar::before {{
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  background: var(--nv-primary);
+}}
+div[data-testid="column"] {{
+  padding-left: 0.4rem !important;
+  padding-right: 0.4rem !important;
+}}
+div[data-testid="column"] > div {{
+  height: 100%;
 }}
 
 .nv-utility {{
@@ -252,14 +304,18 @@ div[data-testid="stToolbar"] {{ display: none; }}
   background: var(--nv-surface-soft);
   border: 1px solid var(--nv-hairline);
   border-radius: var(--nv-radius);
-  padding: 20px 24px;
-  min-height: 140px;
-  font-size: 18px;
+  padding: 16px 18px;
+  min-height: 280px;
+  height: 280px;
+  overflow-y: auto;
+  flex: 1;
+  font-size: 16px;
   font-weight: 400;
   line-height: 1.55;
   color: var(--nv-body);
   white-space: pre-wrap;
   word-break: break-word;
+  box-sizing: border-box;
 }}
 .nv-output-empty {{ color: var(--nv-mute); }}
 .nv-cursor {{
@@ -470,7 +526,7 @@ def stream_translation(
     api_base: str,
     text: str,
     direction: str,
-    max_new_tokens: int = 256,
+    max_new_tokens: int = 1000,
 ) -> Generator[str, None, dict]:
     """Yield token pieces; return final metadata dict."""
     url = f"{api_base.rstrip('/')}/translate"
@@ -623,7 +679,7 @@ def render_footer() -> None:
       <h4>Live mode</h4>
       <ul>
         <li>Debounced as-you-type</li>
-        <li>SSE token stream</li>
+        <li>SSE token streaming</li>
         <li>Cancel + supersede</li>
       </ul>
     </div>
@@ -801,9 +857,9 @@ def run_live_stream(
 
 def main() -> None:
     st.set_page_config(
-        page_title="envit5 Live Stream · VI↔EN",
+        page_title="envit5 Live Translation · VI↔EN",
         page_icon="🟩",
-        layout="centered",
+        layout="wide",
         initial_sidebar_state="expanded",
     )
     inject_styles()
@@ -813,7 +869,7 @@ def main() -> None:
         st.markdown("### Settings")
         st.caption("API · live debounce · decode")
         api_base = st.text_input("API base URL", value=DEFAULT_API_BASE)
-        max_new_tokens = st.slider("Max new tokens", 32, 512, 128, 32)
+        max_new_tokens = st.slider("Max new tokens", 32, 1000, 1000, 32)
         debounce_ms = st.slider(
             "Debounce (ms)",
             min_value=200,
@@ -838,8 +894,8 @@ def main() -> None:
             f"""
 <div style="font-size:12px;color:{C_MUTE};line-height:1.5;">
 <strong style="color:{C_INK};">Live streaming</strong><br/>
-Type → wait {debounce_ms}ms → SSE tokens<br/>
-fill the panel below instantly.<br/><br/>
+Type left → tokens stream right<br/>
+after {debounce_ms}ms debounce.<br/><br/>
 Accent <span style="color:{C_PRIMARY};font-weight:700;">#76b900</span>
 </div>
 """,
@@ -851,74 +907,86 @@ Accent <span style="color:{C_PRIMARY};font-weight:700;">#76b900</span>
 
     render_chrome(health)
 
+    # Layout (matches wireframe):
+    #   [ Source ] [ Translation ]
+    #   [        Direction         ]
+    left, right = st.columns(2, gap="large")
+    IO_BOX_HEIGHT = 280
+
+    with left:
+        st.markdown(
+            """
+<div class="nv-io-panel">
+  <div class="nv-badge">Input · live</div>
+  <div class="nv-card-title">Source</div>
+  <div class="nv-card-desc">
+    Type Vietnamese or English. Translation streams into the Translation panel on the right.
+  </div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+        source = live_textarea(
+            label="Source text",
+            key="source_text",
+            placeholder="Type here… e.g. Xin chào các bạn / Hello everyone",
+            debounce=debounce_ms,
+            height=IO_BOX_HEIGHT,
+        )
+
+    with right:
+        st.markdown(
+            """
+<div class="nv-io-panel">
+  <div class="nv-badge">Output · token stream</div>
+  <div class="nv-card-title">Translation</div>
+  <div class="nv-card-desc">
+    Tokens append as the model decodes. Green cursor marks an active stream.
+  </div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+        status = st.empty()
+        stream_area = st.empty()
+
+        if st.session_state.output_text:
+            stream_area.markdown(
+                output_html(
+                    st.session_state.output_text,
+                    direction=st.session_state.output_direction,
+                ),
+                unsafe_allow_html=True,
+            )
+        else:
+            stream_area.markdown(
+                output_html("Translation appears here as you type…", empty=True),
+                unsafe_allow_html=True,
+            )
+
+    # Full-width direction bar under both boxes
     st.markdown(
         """
-<div class="nv-card">
-  <div class="nv-badge">Input · live</div>
-  <div class="nv-card-title">Source text</div>
-  <div class="nv-card-desc">
-    Start typing Vietnamese or English. Translation streams into the panel below
-    automatically after a short pause — no Translate click required.
-  </div>
+<div class="nv-direction-bar">
+  <div class="nv-badge">Direction</div>
+  <div class="nv-card-title" style="margin-bottom:0;">Translation direction</div>
 </div>
 """,
         unsafe_allow_html=True,
     )
-
-    # Keyup-driven input: every keystroke (debounced in the component) triggers a
-    # Streamlit rerun so translation can stream live under the field.
-    source = st_keyup(
-        "Source text",
-        placeholder="Type here… e.g. Xin chào các bạn / Hello everyone",
-        key="source_text",
-        debounce=debounce_ms,
-        label_visibility="collapsed",
-    )
-
-    col_dir, col_force = st.columns([2, 1], gap="medium")
+    col_dir, col_force = st.columns([3, 1], gap="medium")
     with col_dir:
         direction_label = st.selectbox(
             "Direction",
             options=list(DIRECTION_LABELS.keys()),
             index=0,
             key="direction_label",
+            label_visibility="collapsed",
         )
     with col_force:
-        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
         force = st.button("Translate now", type="primary", use_container_width=True)
 
     direction = DIRECTION_LABELS[direction_label]
-
-    st.markdown(
-        """
-<div class="nv-card">
-  <div class="nv-badge">Output · token stream</div>
-  <div class="nv-card-title">Live translation</div>
-  <div class="nv-card-desc">
-    Tokens append as the model decodes. Green cursor marks an active stream.
-  </div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
-    status = st.empty()
-    stream_area = st.empty()
-
-    # Restore last output between reruns
-    if st.session_state.output_text:
-        stream_area.markdown(
-            output_html(
-                st.session_state.output_text,
-                direction=st.session_state.output_direction,
-            ),
-            unsafe_allow_html=True,
-        )
-    else:
-        stream_area.markdown(
-            output_html("Start typing above — translation appears here…", empty=True),
-            unsafe_allow_html=True,
-        )
 
     text = (source or "").strip()
     translate_key = f"{direction}||{text}||{max_new_tokens}"
@@ -928,27 +996,20 @@ Accent <span style="color:{C_PRIMARY};font-weight:700;">#76b900</span>
         st.session_state.last_translated_key = None
         st.session_state.output_text = ""
         st.session_state.output_direction = None
-        status.markdown(
-            status_html("wait", "Waiting for input…"),
-            unsafe_allow_html=True,
-        )
+        status.empty()
         stream_area.markdown(
-            output_html("Start typing above — translation appears here…", empty=True),
+            output_html("Translation appears here as you type…", empty=True),
             unsafe_allow_html=True,
         )
     elif len(text) < MIN_CHARS and not force:
-        status.markdown(
-            status_html("wait", f"Type at least {MIN_CHARS} characters…"),
-            unsafe_allow_html=True,
-        )
+        status.empty()
     elif force:
         should_run = True
     elif live_enabled and translate_key != st.session_state.last_translated_key:
-        # st_keyup already debounced keystrokes before this rerun fired.
+        # live_textarea already debounced keystrokes before this rerun fired.
         should_run = True
 
     if should_run and text:
-        # Skip if we already finished this exact payload (unless forced).
         if (
             not force
             and translate_key == st.session_state.last_translated_key
@@ -970,7 +1031,6 @@ Accent <span style="color:{C_PRIMARY};font-weight:700;">#76b900</span>
                 status_slot=status,
                 output_slot=stream_area,
             )
-            # Only mark complete if not cancelled mid-flight.
             if not st.session_state.output_error:
                 st.session_state.last_translated_key = translate_key
 

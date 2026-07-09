@@ -74,4 +74,4 @@ def test_request_accepts_trimmed():
 
 def test_max_new_tokens_clamped():
     req = TranslateRequest(text="hello", direction="en-vi", max_new_tokens=9999)
-    assert req.max_new_tokens == 512
+    assert req.max_new_tokens == 1000

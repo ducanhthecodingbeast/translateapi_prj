@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: transparent;
+        font-family: Inter, Arial, Helvetica, sans-serif;
+      }
+      #box {
+        width: 100%;
+        box-sizing: border-box;
+        resize: none;
+        border: 1px solid #cccccc;
+        border-radius: 2px;
+        background: #f7f7f7;
+        color: #1a1a1a;
+        font-size: 16px;
+        font-weight: 400;
+        line-height: 1.55;
+        padding: 16px 18px;
+        outline: none;
+      }
+      #box:focus {
+        border: 2px solid #76b900;
+        padding: 15px 17px;
+      }
+      #box::placeholder {
+        color: #757575;
+      }
+    </style>
+  </head>
+  <body>
+    <textarea id="box"></textarea>
+    <script>
+      // Minimal Streamlit component bridge (no external lib dependency).
+      function sendMessageToStreamlitClient(type, data) {
+        const outData = Object.assign({
+          isStreamlitMessage: true,
+          type: type,
+        }, data);
+        window.parent.postMessage(outData, "*");
+      }
+      function init() {
+        sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1});
+      }
+      function setFrameHeight(height) {
+        sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: height});
+      }
+      function setComponentValue(value) {
+        sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value});
+      }
+
+      const textarea = document.getElementById("box");
+      let debounceMs = 450;
+      let timer = null;
+      let lastSent = "";
+      let disabled = false;
+
+      function send(value) {
+        if (disabled) return;
+        if (value === lastSent) return;
+        lastSent = value;
+        setComponentValue(value);
+      }
+      function schedule() {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => send(textarea.value), debounceMs);
+      }
+
+      textarea.addEventListener("input", schedule);
+      textarea.addEventListener("keyup", schedule);
+      textarea.addEventListener("blur", () => send(textarea.value));
+
+      function onRender(event) {
+        if (event.data.type !== "streamlit:render") return;
+        const args = event.data.args || {};
+        debounceMs = args.debounce || 450;
+        disabled = !!args.disabled;
+        textarea.disabled = disabled;
+        textarea.placeholder = args.placeholder || "";
+        const h = args.height || 280;
+        textarea.style.height = h + "px";
+        if (typeof args.value === "string" && args.value !== textarea.value && document.activeElement !== textarea) {
+          textarea.value = args.value;
+          lastSent = args.value;
+        }
+        if (args.primaryColor) {
+          // keep default NVIDIA green unless themed
+        }
+        setFrameHeight(h + 4);
+      }
+
+      window.addEventListener("message", onRender);
+      init();
+      setFrameHeight(284);
+    </script>
+  </body>
+</html>

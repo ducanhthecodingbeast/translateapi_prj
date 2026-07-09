@@ -139,7 +139,7 @@ class TranslationService:
         self,
         text: str,
         direction: ResolvedDirection,
-        max_new_tokens: int = 256,
+        max_new_tokens: int = 1000,
     ) -> Generator[str, None, str]:
         """Yield decoded token pieces; return the full translated string.
 
