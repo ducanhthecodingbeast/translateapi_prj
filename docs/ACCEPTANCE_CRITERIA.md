@@ -88,8 +88,8 @@ bash scripts/smoke_translate.sh
 
 | Gate | Owner | Result | Date |
 |------|-------|--------|------|
-| Local unit A* | | | |
-| SSE B* | | | |
-| Git C* | | | |
-| Remote D* | | | |
-| **Push main allowed?** | | YES only if A+C pass; demo live only if D pass | |
+| Local unit A* | Codex gpt-5.4-mini | PASS (selfcheck + 27 tests) | 2026-07-10 |
+| SSE B* | | PENDING (needs API/model) | |
+| Git C* | | IN PROGRESS (branch commit on real .git) | 2026-07-10 |
+| Remote D* | | PENDING | |
+| **Push main allowed?** | | NO until C green + B if demo; unit A green | |
