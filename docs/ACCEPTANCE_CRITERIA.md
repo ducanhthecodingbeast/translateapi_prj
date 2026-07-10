@@ -89,7 +89,7 @@ bash scripts/smoke_translate.sh
 | Gate | Owner | Result | Date |
 |------|-------|--------|------|
 | Local unit A* | Codex gpt-5.4-mini | PASS (selfcheck + 27 tests) | 2026-07-10 |
-| SSE B* | | PENDING (needs API/model) | |
-| Git C* | | IN PROGRESS (branch commit on real .git) | 2026-07-10 |
-| Remote D* | | PENDING | |
-| **Push main allowed?** | | NO until C green + B if demo; unit A green | |
+| SSE B* | Codex on cnsh | PASS — smoke_translate.sh all cases | 2026-07-10 |
+| Git C* | Codex gpt-5.4-mini | PASS — main@b985bf4 pushed via SSH | 2026-07-10 |
+| Remote D* | Codex on cnsh | PASS — pull + health ready + smoke | 2026-07-10 |
+| **Push main allowed?** | | YES (done). Demo live ready | 2026-07-10 |
