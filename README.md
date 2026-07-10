@@ -120,18 +120,20 @@ Open http://127.0.0.1:18501 — paste text, choose Auto / VI→EN / EN→VI, cli
 }
 ```
 
-- `text`: required, non-empty after strip, max **2000** chars  
+- `text`: required, non-empty after strip, max **20000** chars  
 - `direction`: `vi-en` | `en-vi` | `auto`  
-- `max_new_tokens`: optional, default 1000, max 1000  
+- `max_new_tokens`: optional, default 256, max 512 (per chunk)
 
-**SSE events:** `meta` → `token`* → `done` (or `error`)
+**SSE events:** `meta` (`chunks`) → (`chunk` → `token`*)* → `done` (or `error`)
+
+Long text is split on sentence boundaries (ellipsis / quotes / commas handled), packed under ~480 source tokens, and translated chunk-by-chunk in one SSE stream so the 512 encode limit does not drop the tail.
 
 **HTTP errors (before stream):** 400 validation / auto-detect fail · 429 busy · 503 model not ready
 
 ## Unit tests (no GPU)
 
 ```bash
-pytest tests/test_direction.py -v
+pytest tests/test_direction.py tests/test_chunking.py -v
 ```
 
 ## Notes

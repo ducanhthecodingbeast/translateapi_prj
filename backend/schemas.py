@@ -8,9 +8,10 @@ from pydantic import BaseModel, Field, field_validator
 
 Direction = Literal["vi-en", "en-vi", "auto"]
 
-MAX_TEXT_LENGTH = 2000
-DEFAULT_MAX_NEW_TOKENS = 1000
-MAX_NEW_TOKENS_CAP = 1000
+# Raised for long-document chunking demos; encode still packs under 480 tokens.
+MAX_TEXT_LENGTH = 20000
+DEFAULT_MAX_NEW_TOKENS = 256
+MAX_NEW_TOKENS_CAP = 512
 
 
 class TranslateRequest(BaseModel):
@@ -20,7 +21,7 @@ class TranslateRequest(BaseModel):
     )
     max_new_tokens: int = Field(
         default=DEFAULT_MAX_NEW_TOKENS,
-        description="Maximum new tokens to generate (clamped to 1..1000)",
+        description="Maximum new tokens per chunk (clamped to 1..512)",
     )
 
     @field_validator("text")

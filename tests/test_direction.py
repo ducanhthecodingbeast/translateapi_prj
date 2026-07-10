@@ -64,7 +64,7 @@ def test_request_rejects_empty():
 
 def test_request_rejects_overlong():
     with pytest.raises(Exception):
-        TranslateRequest(text="a" * 2001, direction="vi-en")
+        TranslateRequest(text="a" * 20001, direction="vi-en")
 
 
 def test_request_accepts_trimmed():
@@ -74,4 +74,4 @@ def test_request_accepts_trimmed():
 
 def test_max_new_tokens_clamped():
     req = TranslateRequest(text="hello", direction="en-vi", max_new_tokens=9999)
-    assert req.max_new_tokens == 1000
+    assert req.max_new_tokens == 512

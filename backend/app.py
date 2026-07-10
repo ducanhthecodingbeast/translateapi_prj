@@ -40,7 +40,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="envit5 Translation API",
     description="Vietnamese↔English token-streaming translation via VietAI/envit5-translation",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -120,12 +120,19 @@ def translate(body: TranslateRequest) -> EventSourceResponse:
                 detail="Translation already in progress. Retry after the current request finishes.",
             )
 
+    chunks = service.prepare_chunks(body.text)
+    n_chunks = len(chunks)
+
     def event_stream() -> Iterator[dict]:
         full_text = ""
         try:
             yield _sse_event(
                 "meta",
-                {"direction": direction, "model": service.model_id},
+                {
+                    "direction": direction,
+                    "model": service.model_id,
+                    "chunks": n_chunks,
+                },
             )
             stream = service.stream_translate(
                 text=body.text,
@@ -134,9 +141,17 @@ def translate(body: TranslateRequest) -> EventSourceResponse:
             )
             try:
                 while True:
-                    piece = next(stream)
-                    full_text += piece
-                    yield _sse_event("token", {"t": piece})
+                    event = next(stream)
+                    etype = event.get("type")
+                    if etype == "chunk":
+                        yield _sse_event(
+                            "chunk",
+                            {"i": event["i"], "n": event["n"]},
+                        )
+                    elif etype == "token":
+                        piece = event["t"]
+                        full_text += piece
+                        yield _sse_event("token", {"t": piece, "i": event.get("i", 0)})
             except StopIteration as stop:
                 if stop.value:
                     full_text = stop.value
@@ -145,7 +160,7 @@ def translate(body: TranslateRequest) -> EventSourceResponse:
 
             yield _sse_event(
                 "done",
-                {"text": full_text, "direction": direction},
+                {"text": full_text, "direction": direction, "chunks": n_chunks},
             )
         except GenerationCancelled:
             yield _sse_event(

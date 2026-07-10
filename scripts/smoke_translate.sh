@@ -35,5 +35,9 @@ smoke_one() {
 smoke_one "vi-en" '{"text":"Xin chào các bạn","direction":"vi-en","max_new_tokens":64}'
 smoke_one "en-vi" '{"text":"Hello everyone","direction":"en-vi","max_new_tokens":64}'
 
+# Multi-sentence with special cases: ellipsis, repeated commas, quoted period.
+MULTI='{"text":"Wait... Really? He said \"Hi.\" a,, b,,, c. Next sentence here.","direction":"en-vi","max_new_tokens":64}'
+smoke_one "multi-chunk" "${MULTI}"
+
 echo
 echo "All smoke checks passed."
