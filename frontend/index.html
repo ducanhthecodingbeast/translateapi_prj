@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Translation Sandbox · /translate</title>
+  <style>
+    :root {
+      --canvas: #f3ebe3;
+      --canvas-2: #faf6f1;
+      --card: #f7f0e8;
+      --card-deep: #f3e9df;
+      --ink: #1c1917;
+      --muted: #6b635b;
+      --hairline: #e4d9cd;
+      --white: #ffffff;
+      --primary: #c46a4f;
+      --primary-hover: #b55b41;
+      --secondary: #ebe2d7;
+      --secondary-ink: #3f3a35;
+      --chip: #fffaf5;
+      --ok: #2f6f4e;
+      --err: #a33b2b;
+      --shadow: 0 10px 30px rgba(60, 40, 20, 0.08);
+      --radius: 22px;
+      --pill: 999px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #fff8f0 0%, transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, #f6e7db 0%, transparent 50%),
+        linear-gradient(180deg, var(--canvas-2), var(--canvas));
+      min-height: 100vh;
+      padding: 28px 22px 48px;
+    }
+    .page { max-width: 1180px; margin: 0 auto; }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+    .grid-2.work { grid-template-columns: 1fr 1fr; }
+    @media (max-width: 900px) {
+      .grid-2, .grid-2.work { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: linear-gradient(180deg, var(--card) 0%, var(--card-deep) 100%);
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px 26px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: var(--pill);
+      background: #efe4d8;
+      color: #5a4f45;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .badge::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--primary);
+    }
+    h1 {
+      margin: 14px 0 10px;
+      font-size: clamp(28px, 3.4vw, 40px);
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      font-weight: 800;
+    }
+    .desc {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.5;
+      max-width: 42ch;
+    }
+    .chips { display: flex; flex-wrap: wrap; gap: 10px; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 12px;
+      background: var(--chip);
+      border: 1px solid var(--hairline);
+      font-size: 13px;
+      color: var(--secondary-ink);
+    }
+    .chip strong { font-weight: 700; color: var(--ink); }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #b0a59a;
+      box-shadow: 0 0 0 3px rgba(176, 165, 154, 0.18);
+      flex-shrink: 0;
+    }
+    .dot.ok {
+      background: var(--ok);
+      box-shadow: 0 0 0 3px rgba(47,111,78,0.15);
+    }
+    .dot.bad {
+      background: var(--err);
+      box-shadow: 0 0 0 3px rgba(163,59,43,0.15);
+    }
+    .card h2 { margin: 0 0 6px; font-size: 20px; font-weight: 800; }
+    .card .sub { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
+    label.field-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: #3d3731;
+      margin: 0 0 6px;
+    }
+    .field { margin-bottom: 12px; }
+    .row-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    input[type="text"],
+    input[type="number"],
+    input[type="url"],
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid var(--hairline);
+      background: var(--white);
+      color: var(--ink);
+      border-radius: 12px;
+      padding: 11px 13px;
+      font: inherit;
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: #d4a08f;
+      box-shadow: 0 0 0 3px rgba(196, 106, 79, 0.15);
+    }
+    textarea {
+      min-height: 220px;
+      resize: vertical;
+      line-height: 1.5;
+    }
+    #translationOut {
+      min-height: 220px;
+      border: 1px solid var(--hairline);
+      background: var(--white);
+      border-radius: 12px;
+      padding: 14px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    #translationOut.empty { color: #9a9086; }
+    #translationOut.streaming::after {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 1.05em;
+      margin-left: 2px;
+      background: var(--primary);
+      vertical-align: text-bottom;
+      animation: blink 1s steps(1) infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--secondary-ink);
+      margin: 4px 0 14px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .check input { width: 15px; height: 15px; accent-color: var(--primary); }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    button {
+      border: none;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+      border-radius: var(--pill);
+      padding: 11px 18px;
+    }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+      box-shadow: 0 6px 16px rgba(196, 106, 79, 0.28);
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+    .btn-secondary {
+      background: var(--secondary);
+      color: var(--secondary-ink);
+    }
+    .btn-secondary:hover:not(:disabled) { filter: brightness(0.97); }
+    #statusLog {
+      margin-top: 14px;
+      min-height: 72px;
+      border-radius: 14px;
+      border: 1px dashed #d7c9ba;
+      background: rgba(255,255,255,0.45);
+      padding: 12px 14px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    #statusLog.error { color: var(--err); border-color: #e2b4ab; }
+    .hint {
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    #streamStatus {
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--muted);
+      min-height: 1.2em;
+    }
+    #streamStatus.live { color: var(--primary); font-weight: 700; }
+    #streamStatus.error { color: var(--err); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="grid-2">
+      <section class="card">
+        <div class="badge">Translation Sandbox</div>
+        <h1>Dịch VI↔EN streaming, test trực tiếp trên web.</h1>
+        <p class="desc">Gõ văn bản → token stream live qua FastAPI envit5. Sandbox giống face-test, chỉ dành cho dịch. Path: <strong>/translate</strong></p>
+        <div class="chips">
+          <span class="chip"><span id="chipReadyDot" class="dot"></span><strong id="chipReady">API …</strong></span>
+          <span class="chip"><strong>device</strong>&nbsp;<span id="chipDevice">—</span></span>
+          <span class="chip"><strong>meta</strong>&nbsp;<span id="chipMeta">—</span></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Cấu hình API</h2>
+        <p class="sub">Local demo · mặc định cổng 18800</p>
+
+        <div class="field">
+          <label class="field-label" for="apiBase">API base URL</label>
+          <input id="apiBase" type="url" value="http://127.0.0.1:18800" autocomplete="off" />
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <label class="field-label" for="debounceMs">Debounce (ms)</label>
+            <input id="debounceMs" type="number" min="0" step="50" value="450" />
+          </div>
+          <div class="field">
+            <label class="field-label" for="maxNewTokens">Max new tokens</label>
+            <input id="maxNewTokens" type="number" min="1" max="512" value="256" />
+          </div>
+        </div>
+        <label class="check"><input id="liveToggle" type="checkbox" checked /> Live khi gõ (debounce)</label>
+        <div class="actions">
+          <button id="btnHealth" class="btn-primary" type="button">Kiểm tra health</button>
+        </div>
+        <div id="statusLog">Chưa kiểm tra API.</div>
+      </section>
+    </div>
+
+    <div class="grid-2 work">
+      <section class="card">
+        <h2>Văn bản nguồn</h2>
+        <p class="sub">Nhập tiếng Việt hoặc English</p>
+        <div class="field">
+          <label class="field-label" for="direction">Hướng dịch</label>
+          <select id="direction">
+            <option value="auto" selected>Auto</option>
+            <option value="vi-en">VI → EN</option>
+            <option value="en-vi">EN → VI</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label" for="sourceText">Nội dung</label>
+          <textarea id="sourceText" placeholder="Gõ để dịch…" spellcheck="true"></textarea>
+        </div>
+        <div class="actions">
+          <button id="btnTranslate" class="btn-primary" type="button">Dịch ngay</button>
+          <button id="btnClear" class="btn-secondary" type="button">Xóa</button>
+        </div>
+        <p class="hint">Live: sau debounce, tự gọi POST /translate (SSE). Tối thiểu 2 ký tự.</p>
+      </section>
+
+      <section class="card">
+        <h2>Bản dịch</h2>
+        <p class="sub">Token hiện dần khi stream</p>
+        <div class="field">
+          <label class="field-label" for="translationOut">Kết quả</label>
+          <div id="translationOut" class="empty" aria-live="polite">Bản dịch sẽ hiện khi bạn gõ…</div>
+        </div>
+        <p id="streamStatus"></p>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const EMPTY_OUT = "Bản dịch sẽ hiện khi bạn gõ…";
+    let abortController = null;
+    let debounceTimer = null;
+    let genId = 0;
+    let accumulated = "";
+
+    function $(id) { return document.getElementById(id); }
+
+    function apiRoot() {
+      return $("apiBase").value.trim().replace(/\/$/, "");
+    }
+
+    function setLog(msg, isError) {
+      const el = $("statusLog");
+      el.textContent = msg;
+      el.classList.toggle("error", !!isError);
+    }
+
+    function setChips({ ready, device, meta }) {
+      const readyEl = $("chipReady");
+      const dot = $("chipReadyDot");
+      if (ready === true) {
+        readyEl.textContent = "API ready";
+        dot.className = "dot ok";
+      } else if (ready === false) {
+        readyEl.textContent = "API down";
+        dot.className = "dot bad";
+      } else {
+        readyEl.textContent = "API …";
+        dot.className = "dot";
+      }
+      if (device != null) $("chipDevice").textContent = device;
+      if (meta != null) $("chipMeta").textContent = meta;
+    }
+
+    function showEmptyOutput() {
+      const out = $("translationOut");
+      out.textContent = EMPTY_OUT;
+      out.classList.add("empty");
+      out.classList.remove("streaming");
+      accumulated = "";
+    }
+
+    function clearOutputForStream() {
+      const out = $("translationOut");
+      out.textContent = "";
+      out.classList.remove("empty");
+      out.classList.add("streaming");
+      accumulated = "";
+    }
+
+    function setOutputText(text, streaming) {
+      const out = $("translationOut");
+      const t = text || "";
+      if (!t && !streaming) {
+        showEmptyOutput();
+        return;
+      }
+      out.textContent = t;
+      out.classList.toggle("empty", !t);
+      out.classList.toggle("streaming", !!streaming);
+      accumulated = t;
+    }
+
+    function setStreamStatus(msg, kind) {
+      const el = $("streamStatus");
+      el.textContent = msg || "";
+      el.classList.toggle("live", kind === "live");
+      el.classList.toggle("error", kind === "error");
+    }
+
+    async function checkHealth() {
+      const base = apiRoot();
+      if (!base) {
+        setLog("Nhập API base URL.", true);
+        return;
+      }
+      setLog("Đang kiểm tra health…");
+      try {
+        const r = await fetch(base + "/health", { method: "GET" });
+        if (!r.ok) {
+          const text = await r.text();
+          setChips({ ready: false, device: "—", meta: "—" });
+          setLog("HTTP " + r.status + ": " + (text || r.statusText), true);
+          return;
+        }
+        const data = await r.json();
+        setChips({
+          ready: !!data.ready,
+          device: data.device || "—",
+          meta: data.model_id || data.status || "—",
+        });
+        setLog(
+          "Health " + (data.ready ? "OK" : "NOT READY") +
+          " · status=" + data.status +
+          " · model=" + data.model_id +
+          " · device=" + data.device
+        );
+      } catch (err) {
+        setChips({ ready: false, device: "—", meta: "—" });
+        setLog("Không kết nối được API tại " + base + ". (" + (err.message || err) + ")", true);
+      }
+    }
+
+    function parseSSEChunk(buffer, onEvent) {
+      const parts = buffer.split("\n");
+      const rest = parts.pop();
+      let eventName = "message";
+      let dataLines = [];
+      for (const raw of parts) {
+        const line = raw.replace(/\r$/, "");
+        if (line === "") {
+          if (dataLines.length) {
+            const payload = dataLines.join("\n");
+            let data;
+            try { data = JSON.parse(payload); } catch (_) { data = { raw: payload }; }
+            onEvent(eventName, data);
+          }
+          eventName = "message";
+          dataLines = [];
+          continue;
+        }
+        if (line.startsWith(":")) continue;
+        if (line.startsWith("event:")) eventName = line.slice(6).trim();
+        else if (line.startsWith("data:")) dataLines.push(line.slice(5).replace(/^ /, ""));
+      }
+      return rest || "";
+    }
+
+    async function cancelInFlight() {
+      if (abortController) {
+        try { abortController.abort(); } catch (_) {}
+        abortController = null;
+      }
+      try {
+        await fetch(apiRoot() + "/cancel", { method: "POST" });
+      } catch (_) {}
+    }
+
+    async function consumeSSE(response, myGen) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let direction = null;
+      let chunks = null;
+
+      const onEvent = (event, data) => {
+        if (myGen !== genId) return;
+        if (event === "meta") {
+          direction = data.direction || direction;
+          chunks = data.chunks != null ? data.chunks : chunks;
+          const metaBits = [];
+          if (direction) metaBits.push(direction);
+          if (chunks != null) metaBits.push(chunks + " chunk" + (chunks === 1 ? "" : "s"));
+          if (metaBits.length) setChips({ ready: null, device: null, meta: metaBits.join(" · ") });
+          setStreamStatus("Đang dịch… · " + (metaBits.join(" · ") || ""), "live");
+        } else if (event === "chunk") {
+          if (data.i != null && data.n != null) {
+            setStreamStatus("Đang dịch… · chunk " + data.i + "/" + data.n, "live");
+          }
+        } else if (event === "token") {
+          const piece = data.t || "";
+          if (piece) {
+            accumulated += piece;
+            setOutputText(accumulated, true);
+          }
+        } else if (event === "done") {
+          const finalText = data.text != null ? data.text : accumulated;
+          direction = data.direction || direction;
+          chunks = data.chunks != null ? data.chunks : chunks;
+          setOutputText(finalText, false);
+          const bits = [];
+          if (direction) bits.push(direction);
+          if (chunks != null) bits.push(chunks + " chunk" + (chunks === 1 ? "" : "s"));
+          setStreamStatus("Xong" + (bits.length ? " · " + bits.join(" · ") : ""));
+          if (bits.length) setChips({ ready: null, device: null, meta: bits.join(" · ") });
+        } else if (event === "error") {
+          const msg = data.message || "Unknown streaming error";
+          if (data.code === "cancelled" || msg === "cancelled") {
+            // superseded — ignore
+            return;
+          }
+          setStreamStatus("Lỗi: " + msg, "error");
+          setLog("SSE error: " + msg, true);
+          $("translationOut").classList.remove("streaming");
+        }
+      };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (myGen !== genId) {
+          try { await reader.cancel(); } catch (_) {}
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        buffer = parseSSEChunk(buffer, onEvent);
+      }
+      if (buffer && myGen === genId) {
+        parseSSEChunk(buffer + "\n\n", onEvent);
+      }
+      if (myGen === genId) {
+        $("translationOut").classList.remove("streaming");
+      }
+    }
+
+    async function runTranslate(opts) {
+      const force = !!(opts && opts.force);
+      const text = $("sourceText").value;
+      const trimmed = text.trim();
+      const live = $("liveToggle").checked;
+      if (!force && !live) return;
+      if (trimmed.length < 2) {
+        if (trimmed.length === 0) {
+          showEmptyOutput();
+          setStreamStatus("");
+        }
+        return;
+      }
+
+      const myGen = ++genId;
+      await cancelInFlight();
+      const controller = new AbortController();
+      abortController = controller;
+
+      const direction = $("direction").value;
+      let maxTok = parseInt($("maxNewTokens").value, 10);
+      if (!Number.isFinite(maxTok)) maxTok = 256;
+      maxTok = Math.max(1, Math.min(512, maxTok));
+
+      setStreamStatus("Đang dịch…", "live");
+      clearOutputForStream();
+
+      try {
+        const r = await fetch(apiRoot() + "/translate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify({
+            text: trimmed,
+            direction: direction,
+            max_new_tokens: maxTok,
+          }),
+          signal: controller.signal,
+        });
+        if (myGen !== genId) return;
+        if (!r.ok) {
+          let detail = r.statusText;
+          try {
+            const j = await r.json();
+            detail = j.detail || JSON.stringify(j);
+          } catch (_) {
+            try { detail = await r.text(); } catch (_) {}
+          }
+          setLog("HTTP " + r.status + ": " + detail, true);
+          setStreamStatus("Lỗi HTTP " + r.status, "error");
+          showEmptyOutput();
+          return;
+        }
+        await consumeSSE(r, myGen);
+      } catch (err) {
+        if (err.name === "AbortError") return;
+        if (myGen !== genId) return;
+        setLog("Lỗi dịch: " + (err.message || err), true);
+        setStreamStatus("Lỗi kết nối", "error");
+      } finally {
+        if (abortController === controller) abortController = null;
+      }
+    }
+
+    function wire() {
+      $("btnHealth").addEventListener("click", () => checkHealth());
+      $("sourceText").addEventListener("input", () => {
+        clearTimeout(debounceTimer);
+        let ms = parseInt($("debounceMs").value, 10);
+        if (!Number.isFinite(ms) || ms < 0) ms = 450;
+        debounceTimer = setTimeout(() => runTranslate({ force: false }), ms);
+      });
+      $("btnTranslate").addEventListener("click", () => {
+        clearTimeout(debounceTimer);
+        runTranslate({ force: true });
+      });
+      $("btnClear").addEventListener("click", async () => {
+        clearTimeout(debounceTimer);
+        genId++;
+        await cancelInFlight();
+        $("sourceText").value = "";
+        showEmptyOutput();
+        setStreamStatus("");
+      });
+      $("direction").addEventListener("change", () => {
+        if ($("liveToggle").checked && $("sourceText").value.trim().length >= 2) {
+          clearTimeout(debounceTimer);
+          runTranslate({ force: false });
+        }
+      });
+      checkHealth();
+    }
+
+    document.addEventListener("DOMContentLoaded", wire);
+  </script>
+</body>
+</html>

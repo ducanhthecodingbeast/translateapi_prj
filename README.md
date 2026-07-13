@@ -3,7 +3,7 @@
 Basic demo of **Vietnamese ↔ English** translation with **true token streaming** using [VietAI/envit5-translation](https://huggingface.co/VietAI/envit5-translation).
 
 - **API:** FastAPI + Server-Sent Events (SSE)
-- **UI:** Streamlit
+- **UI:** Streamlit + static HTML sandbox (`frontend/index.html`, target path `/translate`)
 - **Model:** loaded once in the API process (not on every Streamlit rerun)
 
 ## Layout
@@ -11,7 +11,7 @@ Basic demo of **Vietnamese ↔ English** translation with **true token streaming
 ```
 translationmodel_testing/
   backend/           # FastAPI: /health, /translate (SSE)
-  frontend/          # Streamlit SSE client
+  frontend/          # Streamlit SSE client + index.html sandbox (/translate)
   scripts/           # download_model.py, smoke_translate.sh
   models/            # optional local cache (gitignored weights)
   tests/             # unit tests for direction/prefix helpers

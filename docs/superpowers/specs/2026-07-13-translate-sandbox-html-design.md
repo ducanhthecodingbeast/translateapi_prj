@@ -15,7 +15,7 @@ Ship a single static HTML page that is a **translate-only** sandbox for the loca
 - Replacing or rewriting Streamlit
 - Multi-worker / production hosting redesign
 - Auth, rate-limit UI beyond surfacing 429/503
-- Deploy path wiring on aiface.ript.vn (path name TBD later; not `/face-test`)
+- Changing `/face-test` or face APIs (public path for this page is **`/translate`**)
 
 ## Approach
 
@@ -122,7 +122,7 @@ translating demo/
     2026-07-13-translate-sandbox-html-design.md  # this file
 ```
 
-Serve `index.html` however convenient later (static file, nginx path ≠ `/face-test`). Implementation does not require starting servers.
+Serve `index.html` at public path **`/translate`** (`https://aiface.ript.vn/translate`). Local file work does not require starting servers or nginx.
 
 ## Testing (manual — no auto-run unless asked)
 
@@ -151,6 +151,8 @@ Serve `index.html` however convenient later (static file, nginx path ≠ `/face-
 - Min chars before live translate: **2**
 - API base: `http://127.0.0.1:18800`
 
-## Open items (not blocking implementation)
+## Public path (locked)
 
-- Exact public path name when/if hosted (e.g. `/translate-test`) — decide at deploy time
+- **`/translate`** → `https://aiface.ript.vn/translate`
+- Must not collide with `/face-test`
+- Nginx (or host) maps this path to `frontend/index.html` at deploy time — out of scope for HTML file itself except documenting the target path
