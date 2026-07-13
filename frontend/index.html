@@ -262,7 +262,7 @@
 
         <div class="field">
           <label class="field-label" for="apiBase">API base URL</label>
-          <input id="apiBase" type="url" value="http://127.0.0.1:18800" autocomplete="off" />
+          <input id="apiBase" type="url" value="/api/translate" autocomplete="off" />
         </div>
         <div class="row-2">
           <div class="field">
@@ -552,7 +552,7 @@
       clearOutputForStream();
 
       try {
-        const r = await fetch(apiRoot() + "/translate", {
+        const r = await fetch(apiRoot() + "/stream", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

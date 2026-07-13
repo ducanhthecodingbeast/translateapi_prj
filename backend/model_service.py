@@ -264,7 +264,26 @@ class TranslationService:
                 "torch and transformers are required to load the translation model"
             )
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+            # transformers 5.x breaks envit5 AutoTokenizer (Unigram vs BPE tokenizer.json).
+            try:
+                self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+            except TypeError as tok_exc:
+                from huggingface_hub import hf_hub_download
+                from transformers import PreTrainedTokenizerFast
+
+                logger.warning(
+                    "AutoTokenizer failed for %s (%s); using PreTrainedTokenizerFast",
+                    self.model_id,
+                    tok_exc,
+                )
+                tok_file = hf_hub_download(self.model_id, "tokenizer.json")
+                # Pass specials in constructor so TextIteratorStreamer skip_special_tokens works.
+                self.tokenizer = PreTrainedTokenizerFast(
+                    tokenizer_file=tok_file,
+                    eos_token="</s>",
+                    unk_token="<unk>",
+                    pad_token="<pad>",
+                )
             self.model = AutoModelForSeq2SeqLM.from_pretrained(self.model_id)
             self.model.to(self.device)
             self.model.eval()
