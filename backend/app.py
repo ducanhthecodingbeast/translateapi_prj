@@ -84,10 +84,16 @@ def health() -> HealthResponse:
 
 
 @app.post("/cancel")
-def cancel_generation() -> dict:
-    """Request cancellation of the in-flight generation (live-type supersede)."""
-    busy = service.request_cancel()
-    return {"cancelled": busy, "message": "cancel signaled" if busy else "nothing running"}
+async def cancel_generation(request: Request) -> dict:
+    """Cancel only the given job_id. Never steals other users."""
+    job_id = None
+    try:
+        body = await request.json()
+        if isinstance(body, dict):
+            job_id = body.get("job_id")
+    except Exception:
+        job_id = None
+    return service.request_cancel(job_id)
 
 
 @app.post("/translate")
@@ -102,78 +108,112 @@ def translate(body: TranslateRequest) -> EventSourceResponse:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    # Live-as-you-type: if a previous decode is still holding the lock, ask it
-    # to cancel and wait briefly so the new request can take over.
-    if not service.try_acquire():
-        service.request_cancel()
-        acquired = False
-        for _ in range(50):  # up to ~5s
-            import time
-
-            time.sleep(0.1)
-            if service.try_acquire():
-                acquired = True
-                break
-        if not acquired:
-            raise HTTPException(
-                status_code=429,
-                detail="Translation already in progress. Retry after the current request finishes.",
-            )
-
-    chunks = service.prepare_chunks(body.text)
-    n_chunks = len(chunks)
+    job_id = (getattr(body, "job_id", None) or "").strip() or str(uuid.uuid4())
+    queue_timeout_s = 60.0
+    queue_poll_s = 0.4
 
     def event_stream() -> Iterator[dict]:
+        acquired = False
         full_text = ""
         try:
             yield _sse_event(
+                "queued",
+                {"job_id": job_id, "message": "waiting for model", "wait_s": 0},
+            )
+            deadline = time.monotonic() + queue_timeout_s
+            while True:
+                if service.is_job_cancelled(job_id):
+                    yield _sse_event(
+                        "cancelled",
+                        {"job_id": job_id, "message": "cancelled while queued"},
+                    )
+                    return
+                status = service.try_begin_job(job_id)
+                if status is None:
+                    acquired = True
+                    break
+                if status == "cancelled":
+                    yield _sse_event(
+                        "cancelled",
+                        {"job_id": job_id, "message": "cancelled while queued"},
+                    )
+                    return
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    yield _sse_event(
+                        "error",
+                        {
+                            "job_id": job_id,
+                            "code": "queue_timeout",
+                            "message": (
+                                f"Translation queue busy for >{int(queue_timeout_s)}s. "
+                                "Retry shortly."
+                            ),
+                        },
+                    )
+                    return
+                yield _sse_event(
+                    "queued",
+                    {
+                        "job_id": job_id,
+                        "message": "waiting for model",
+                        "wait_s": int(remaining),
+                    },
+                )
+                time.sleep(queue_poll_s)
+
+            chunks = service.prepare_chunks(body.text)
+            n_chunks = len(chunks)
+            yield _sse_event(
                 "meta",
                 {
+                    "job_id": job_id,
                     "direction": direction,
-                    "model": service.model_id,
                     "chunks": n_chunks,
+                    "status": "running",
                 },
             )
+
             stream = service.stream_translate(
-                text=body.text,
+                body.text,
                 direction=direction,
                 max_new_tokens=body.max_new_tokens,
             )
-            try:
-                while True:
+            while True:
+                try:
                     event = next(stream)
                     etype = event.get("type")
                     if etype == "chunk":
-                        yield _sse_event(
-                            "chunk",
-                            {"i": event["i"], "n": event["n"]},
-                        )
+                        yield _sse_event("chunk", {"i": event["i"], "n": event["n"]})
                     elif etype == "token":
                         piece = event["t"]
                         full_text += piece
                         yield _sse_event("token", {"t": piece, "i": event.get("i", 0)})
-            except StopIteration as stop:
-                if stop.value:
-                    full_text = stop.value
-                else:
-                    full_text = full_text.strip()
+                except StopIteration as stop:
+                    if stop.value:
+                        full_text = stop.value
+                    break
 
             yield _sse_event(
                 "done",
-                {"text": full_text, "direction": direction, "chunks": n_chunks},
+                {
+                    "text": full_text,
+                    "job_id": job_id,
+                    "direction": direction,
+                    "chunks": n_chunks,
+                },
             )
-        except GenerationCancelled:
-            yield _sse_event(
-                "error",
-                {"message": "cancelled", "code": "cancelled"},
-            )
-        except Exception as exc:  # noqa: BLE001 — surface as SSE error, always release lock
-            logger.exception("Error during streaming translation")
-            yield _sse_event("error", {"message": str(exc)})
+        except GenerationCancelled as exc:
+            yield _sse_event("cancelled", {"job_id": job_id, "message": str(exc)})
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("translate stream failed")
+            yield _sse_event("error", {"job_id": job_id, "message": str(exc)})
         finally:
-            service.release()
+            if acquired:
+                service.end_job(job_id)
 
     return EventSourceResponse(event_stream())
+
 
 
 if __name__ == "__main__":

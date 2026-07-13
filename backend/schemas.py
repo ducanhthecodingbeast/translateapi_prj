@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -22,6 +22,10 @@ class TranslateRequest(BaseModel):
     max_new_tokens: int = Field(
         default=DEFAULT_MAX_NEW_TOKENS,
         description="Maximum new tokens per chunk (clamped to 1..512)",
+    )
+    job_id: Optional[str] = Field(
+        default=None,
+        description="Client job id for per-request cancel",
     )
 
     @field_validator("text")

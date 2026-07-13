@@ -256,6 +256,9 @@ class TranslationService:
         self._load_error: Optional[str] = None
         self._cancel = threading.Event()
         self._gen_thread: Optional[threading.Thread] = None
+        self._active_job_id: Optional[str] = None
+        self._cancel_jobs: set = set()
+        self._state_lock = threading.Lock()
 
     def load(self) -> None:
         logger.info("Loading model %s on %s ...", self.model_id, self.device)
@@ -309,16 +312,65 @@ class TranslationService:
         return self._lock.acquire(blocking=False)
 
     def release(self) -> None:
-        if self._lock.locked():
+        try:
             self._lock.release()
+        except RuntimeError:
+            pass
 
-    def request_cancel(self) -> bool:
-        """Signal the active generation to stop. Returns whether a job was busy."""
-        busy = self._lock.locked()
-        if busy:
-            self._cancel.set()
-            logger.info("Cancel requested for active generation")
-        return busy
+    def is_job_cancelled(self, job_id: str) -> bool:
+        with self._state_lock:
+            return job_id in self._cancel_jobs
+
+    def try_begin_job(self, job_id: str):
+        with self._state_lock:
+            if job_id in self._cancel_jobs:
+                self._cancel_jobs.discard(job_id)
+                return "cancelled"
+        if not self._lock.acquire(blocking=False):
+            return "busy"
+        with self._state_lock:
+            if job_id in self._cancel_jobs:
+                self._cancel_jobs.discard(job_id)
+                self._lock.release()
+                return "cancelled"
+            self._active_job_id = job_id
+            self._cancel.clear()
+        return None
+
+    def end_job(self, job_id: str) -> None:
+        with self._state_lock:
+            if self._active_job_id == job_id:
+                self._active_job_id = None
+            self._cancel_jobs.discard(job_id)
+            self._cancel.clear()
+        try:
+            self._lock.release()
+        except RuntimeError:
+            pass
+
+    def request_cancel(self, job_id: Optional[str] = None) -> dict:
+        if not job_id:
+            with self._state_lock:
+                return {
+                    "cancelled": False,
+                    "busy": self._lock.locked(),
+                    "job_id": self._active_job_id,
+                    "message": "job_id required",
+                }
+        with self._state_lock:
+            self._cancel_jobs.add(job_id)
+            active = self._active_job_id
+            busy = self._lock.locked()
+            if active == job_id:
+                self._cancel.set()
+                logger.info("Cancel requested for job %s", job_id)
+                return {"cancelled": True, "busy": True, "job_id": job_id}
+            return {
+                "cancelled": True,
+                "busy": busy,
+                "job_id": job_id,
+                "active_job_id": active,
+            }
 
     def count_tokens(self, text: str) -> int:
         """Token length of raw source text (no language prefix)."""

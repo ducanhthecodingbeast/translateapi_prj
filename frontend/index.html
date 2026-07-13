@@ -258,7 +258,7 @@
 
       <section class="card">
         <h2>Cấu hình API</h2>
-        <p class="sub">Local demo · mặc định cổng 18800</p>
+        <p class="sub">Same-origin API · /api/translate</p>
 
         <div class="field">
           <label class="field-label" for="apiBase">API base URL</label>
@@ -302,7 +302,7 @@
           <button id="btnTranslate" class="btn-primary" type="button">Dịch ngay</button>
           <button id="btnClear" class="btn-secondary" type="button">Xóa</button>
         </div>
-        <p class="hint">Live: sau debounce, tự gọi POST /translate (SSE). Tối thiểu 2 ký tự.</p>
+        <p class="hint">Live: sau debounce, POST /stream (SSE). Hủy chỉ job của tab này. Tối thiểu 2 ký tự.</p>
       </section>
 
       <section class="card">
@@ -323,6 +323,14 @@
     let debounceTimer = null;
     let genId = 0;
     let accumulated = "";
+    let currentJobId = null;
+
+    function newJobId() {
+      if (window.crypto && typeof window.crypto.randomUUID === "function") {
+        return window.crypto.randomUUID();
+      }
+      return "job-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+    }
 
     function $(id) { return document.getElementById(id); }
 
@@ -452,8 +460,16 @@
         try { abortController.abort(); } catch (_) {}
         abortController = null;
       }
+      // Only cancel THIS tab's job — never a global cancel that steals others.
+      const jid = currentJobId;
+      currentJobId = null;
+      if (!jid) return;
       try {
-        await fetch(apiRoot() + "/cancel", { method: "POST" });
+        await fetch(apiRoot() + "/cancel", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ job_id: jid }),
+        });
       } catch (_) {}
     }
 
@@ -466,9 +482,17 @@
 
       const onEvent = (event, data) => {
         if (myGen !== genId) return;
-        if (event === "meta") {
+        if (event === "queued") {
+          const wait = data.wait_s != null ? data.wait_s : "?";
+          setStreamStatus("Đang chờ trong hàng đợi… (~" + wait + "s)", "live");
+          if (data.job_id) currentJobId = data.job_id;
+        } else if (event === "cancelled") {
+          setStreamStatus("Đã hủy", "");
+          $("translationOut").classList.remove("streaming");
+        } else if (event === "meta") {
           direction = data.direction || direction;
           chunks = data.chunks != null ? data.chunks : chunks;
+          if (data.job_id) currentJobId = data.job_id;
           const metaBits = [];
           if (direction) metaBits.push(direction);
           if (chunks != null) metaBits.push(chunks + " chunk" + (chunks === 1 ? "" : "s"));
@@ -540,6 +564,8 @@
 
       const myGen = ++genId;
       await cancelInFlight();
+      const jobId = newJobId();
+      currentJobId = jobId;
       const controller = new AbortController();
       abortController = controller;
 
@@ -562,6 +588,7 @@
             text: trimmed,
             direction: direction,
             max_new_tokens: maxTok,
+            job_id: jobId,
           }),
           signal: controller.signal,
         });
